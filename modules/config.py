@@ -723,11 +723,11 @@ class ConfigFile:
 
             logger.separator()
 
-            self.DoesTheDogDie = None
+            self.DogDieChecker = None
             if "doesthedogdie" in self.data:
                 logger.info("Connecting to DoesTheDogDie...")
                 try:
-                    self.DoesTheDogDie = DoesTheDogDie(self.Requests, {
+                    self.DogDieChecker = DoesTheDogDie(self.Requests, self.Cache, {
                         "apikey": check_for_attribute(self.data, "apikey", parent="doesthedogdie", throw=True),
                     })
                 except Failed as e:
@@ -735,9 +735,9 @@ class ConfigFile:
                         logger.warning(e)
                     else:
                         logger.error(e)
-                logger.info(f"DoesTheDogDie Connection {'Failed' if self.OMDb is None else 'Successful'}")
+                logger.info(f"DoesTheDogDie Connection {'Failed' if self.DogDieChecker is None else 'Successful'}")
             else:
-                logger.info("omdb attribute not found")
+                logger.info("doesthedogdie attribute not found")
 
             logger.separator()
 

@@ -255,7 +255,11 @@ class DoesTheDogDie:
         self.headers = {'Accept': 'application/json', 'X-API-KEY': self.apikey}
 
     def _request(self, imdb_id):
-        dtdd_id = self.requests.get_json(search_url, params={"imdb": imdb_id}, headers=self.headers)["items"][0]["id"]
+        search_result = self.requests.get_json(search_url, params={"imdb": imdb_id}, headers=self.headers)
+        items = search_result.get("items", [])
+        if not items:
+            return None
+        dtdd_id = items[0]["id"]
         return self.requests.get_json(f"{media_url}{dtdd_id}", headers=self.headers)
 
     @classmethod
@@ -287,7 +291,10 @@ class DoesTheDogDie:
         return [topic["id"] for topic in cls.topics if topic["category_id"] == category_id]
 
     def search_movie(self, imdb_id, topic_ids=None):
-        return self._get_topic_labels(self._request(imdb_id), topic_ids=topic_ids)
+        movie_info = self._request(imdb_id)
+        if movie_info is None:
+            return []
+        return self._get_topic_labels(movie_info, topic_ids=topic_ids)
 
     def _get_topic_labels(self, movie_info, topic_ids=None):
         topic_labels = []

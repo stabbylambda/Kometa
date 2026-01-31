@@ -334,6 +334,13 @@ class Cache:
                     value2 TEXT,
                     success TEXT)"""
                 )
+                cursor.execute(
+                    """CREATE TABLE IF NOT EXISTS dtdd_data (
+                    key INTEGER PRIMARY KEY,
+                    imdb_id TEXT UNIQUE,
+                    topics TEXT,
+                    expiration_date TEXT)"""
+                )
                 cursor.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='image_map'")
                 if cursor.fetchone()[0] > 0:
                     cursor.execute(f"SELECT DISTINCT library FROM image_map")
@@ -1179,3 +1186,27 @@ class Cache:
                 cursor.execute("INSERT OR IGNORE INTO letterboxd_incremental_state(username, page_type) VALUES(?, ?)", (username, page_type))
                 cursor.execute("UPDATE letterboxd_incremental_state SET last_timestamp = ?, last_item_ids = ?, last_updated = ? WHERE username = ? AND page_type = ?",
                                (last_timestamp, item_ids_json, last_updated, username, page_type))
+
+    def query_dtdd(self, imdb_id, expiration):
+        topics = None
+        expired = None
+        with sqlite3.connect(self.cache_path) as connection:
+            connection.row_factory = sqlite3.Row
+            with closing(connection.cursor()) as cursor:
+                cursor.execute("SELECT * FROM dtdd_data WHERE imdb_id = ?", (imdb_id,))
+                row = cursor.fetchone()
+                if row:
+                    topics = row["topics"].split("|") if row["topics"] else []
+                    datetime_object = datetime.strptime(row["expiration_date"], "%Y-%m-%d")
+                    time_between_insertion = datetime.now() - datetime_object
+                    expired = time_between_insertion.days > expiration
+        return topics, expired
+
+    def update_dtdd(self, expired, imdb_id, topics, expiration):
+        expiration_date = datetime.now() if expired is True else (datetime.now() - timedelta(days=random.randint(1, expiration)))
+        with sqlite3.connect(self.cache_path) as connection:
+            connection.row_factory = sqlite3.Row
+            with closing(connection.cursor()) as cursor:
+                cursor.execute("INSERT OR IGNORE INTO dtdd_data(imdb_id) VALUES(?)", (imdb_id,))
+                update_sql = "UPDATE dtdd_data SET topics = ?, expiration_date = ? WHERE imdb_id = ?"
+                cursor.execute(update_sql, ("|".join(topics), expiration_date.strftime("%Y-%m-%d"), imdb_id))

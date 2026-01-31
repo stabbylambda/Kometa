@@ -1,4 +1,5 @@
 from modules import util
+from modules.util import Failed
 
 logger = util.logger
 
@@ -252,15 +253,26 @@ class DoesTheDogDie:
         self.requests = requests
         self.cache = cache
         self.apikey = params["apikey"]
+        # 1 hour cache TTL seems like a reasonable default
+        self.expiration = 1
         self.headers = {'Accept': 'application/json', 'X-API-KEY': self.apikey}
 
     def _request(self, imdb_id):
-        search_result = self.requests.get_json(search_url, params={"imdb": imdb_id}, headers=self.headers)
+        logger.trace(f"URL: {search_url}")
+        logger.trace(f"Params: imdb={imdb_id}")
+        try:
+            search_result = self.requests.get_json(search_url, params={"imdb": imdb_id}, headers=self.headers)
+        except Exception as e:
+            raise Failed(f"DoesTheDogDie Error: {e}")
         items = search_result.get("items", [])
         if not items:
             return None
         dtdd_id = items[0]["id"]
-        return self.requests.get_json(f"{media_url}{dtdd_id}", headers=self.headers)
+        logger.trace(f"URL: {media_url}{dtdd_id}")
+        try:
+            return self.requests.get_json(f"{media_url}{dtdd_id}", headers=self.headers)
+        except Exception as e:
+            raise Failed(f"DoesTheDogDie Error: {e}")
 
     @classmethod
     def get_topic_id_by_slug(cls, slug):
@@ -290,11 +302,23 @@ class DoesTheDogDie:
     def get_topic_ids_by_category_id(cls, category_id):
         return [topic["id"] for topic in cls.topics if topic["category_id"] == category_id]
 
-    def search_movie(self, imdb_id, topic_ids=None):
+    def search_movie(self, imdb_id, topic_ids=None, ignore_cache=False):
+        expired = None
+        if self.cache and not ignore_cache:
+            cached_topics, expired = self.cache.query_dtdd(imdb_id, self.expiration)
+            if cached_topics is not None and expired is False:
+                logger.trace(f"Using cached DoesTheDogDie data for {imdb_id}")
+                return cached_topics
+
         movie_info = self._request(imdb_id)
         if movie_info is None:
             return []
-        return self._get_topic_labels(movie_info, topic_ids=topic_ids)
+        topic_labels = self._get_topic_labels(movie_info, topic_ids=topic_ids)
+
+        if self.cache and not ignore_cache:
+            self.cache.update_dtdd(expired, imdb_id, topic_labels, self.expiration)
+
+        return topic_labels
 
     def _get_topic_labels(self, movie_info, topic_ids=None):
         topic_labels = []
